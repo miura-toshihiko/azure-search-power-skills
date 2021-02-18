@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft. All rights reserved.  
+﻿// Copyright (c) Microsoft. All rights reserved.  
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.  
 
 using AzureCognitiveSearch.PowerSkills.Common;
@@ -24,7 +24,9 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
     {
         private static readonly string formsRecognizerApiEndpointSetting = "FORMS_RECOGNIZER_ENDPOINT_URL";
         private static readonly string formsRecognizerApiKeySetting = "FORMS_RECOGNIZER_API_KEY";
-        private static readonly string modelIdSetting = "FORMS_RECOGNIZER_MODEL_ID";
+        
+        //private static readonly string modelIdSetting = "FORMS_RECOGNIZER_MODEL_ID";
+
         private static readonly string retryDelaySetting = "FORMS_RECOGNIZER_RETRY_DELAY";
         private static readonly string maxAttemptsSetting = "FORMS_RECOGNIZER_MAX_ATTEMPTS";
 
@@ -45,7 +47,10 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
 
             string formsRecognizerEndpointUrl = Environment.GetEnvironmentVariable(formsRecognizerApiEndpointSetting, EnvironmentVariableTarget.Process).TrimEnd('/');
             string formsRecognizerApiKey = Environment.GetEnvironmentVariable(formsRecognizerApiKeySetting, EnvironmentVariableTarget.Process);
-            string modelId = Environment.GetEnvironmentVariable(modelIdSetting, EnvironmentVariableTarget.Process);
+            
+            
+            // string modelId = Environment.GetEnvironmentVariable(modelIdSetting, EnvironmentVariableTarget.Process);
+
             int retryDelay = int.TryParse(Environment.GetEnvironmentVariable(retryDelaySetting, EnvironmentVariableTarget.Process), out int parsedRetryDelay) ? parsedRetryDelay : 1000;
             int maxAttempts = int.TryParse(Environment.GetEnvironmentVariable(maxAttemptsSetting, EnvironmentVariableTarget.Process), out int parsedMaxAttempts) ? parsedMaxAttempts : 100;
 
@@ -59,7 +64,7 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
                     string formUri = WebApiSkillHelpers.CombineSasTokenWithUri(formUrl, formSasToken);
 
                     // Create the job
-                    string jobId = await GetJobId(formsRecognizerEndpointUrl, formUri, modelId, formsRecognizerApiKey);
+                    string jobId = await GetJobId(formsRecognizerEndpointUrl, formUri, formsRecognizerApiKey);
 
                     // Get the results
                     for (int attempt = 0; attempt < maxAttempts; attempt++)
@@ -76,7 +81,12 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
                         }
                         if (status == "succeeded")
                         {
-                            List<Page> pages = result.SelectToken("analyzeResult.pageResults").ToObject<List<Page>>();
+                            //List<Page> pages = result.SelectToken("analyzeResult.pageResults").ToObject<List<Page>>();
+                            
+
+                            List<Page> pages = result.SelectToken("analyzeResult.readResults").ToObject<List<Page>>();
+
+
                             foreach (KeyValuePair<string, string> kvp in fieldMappings)
                             {
                                 string value = GetField(pages, kvp.Key);
@@ -120,9 +130,20 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
         /// <param name="documentBytes">The binary contents of the document to analyze.</param>
         /// <param name="modelId">The id of the trained model to use.</param>
         /// <returns>The job id that can be used in analyzeResults.</returns>
-        private static async Task<string> GetJobId(string endpointUrl, string formUrl, string modelId, string apiKey)
+        private static async Task<string> GetJobId(string endpointUrl, string formUrl,  string apiKey)
         {
-            string uri = endpointUrl + "/formrecognizer/v2.0-preview/custom/models/" + Uri.EscapeDataString(modelId) + "/analyze";
+            /// https://japaneast.api.cognitive.microsoft.com/formrecognizer/v2.0/layout/analyze
+
+            /// POST https://japaneast.api.cognitive.microsoft.com/formrecognizer/v2.0/layout/analyze HTTP/1.1
+            /// Host: japaneast.api.cognitive.microsoft.com
+            /// Content-Type: application/json
+            /// Ocp-Apim-Subscription-Key: ••••••••••••••••••••••••••••••••
+
+
+            string uri = endpointUrl + "/formrecognizer/v2.0/layout/analyze";
+
+            
+
 
             using (var client = new HttpClient())
             {
@@ -146,6 +167,9 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
                             throw new HttpRequestException($"The remote service {uri} responded with a {response.StatusCode} error code instead of the expected 202 Accepted.");
                         }
                         return response.Headers.GetValues("Operation-Location").FirstOrDefault();
+
+                        // Operation-Location: https://japaneast.api.cognitive.microsoft.com/formrecognizer/v2.0/layout/analyzeResults/e3293219-f0ff-4e45-9b13-071ec82145ad
+
                     }
                 }
             }
@@ -167,6 +191,12 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
                     RequestUri = new Uri(jobId)
                 })
                 {
+                           
+                    // GET https://japaneast.api.cognitive.microsoft.com/formrecognizer/v2.0/layout/analyzeResults/e3293219-f0ff-4e45-9b13-071ec82145ad HTTP/1.1
+                    // Host: japaneast.api.cognitive.microsoft.com
+                    // Ocp-Apim-Subscription-Key: ••••••••••••••••••••••••••••••••
+
+
                     request.Headers.Add("Ocp-Apim-Subscription-Key", apiKey);
                     using (HttpResponseMessage response = await client.SendAsync(request))
                     {
@@ -176,6 +206,7 @@ namespace AzureCognitiveSearch.PowerSkills.Vision.AnalyzeForm
                             throw new HttpRequestException($"The remote service {jobId} responded with a {response.StatusCode} error code.");
                         }
                         string responseBody = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine(responseBody)
                         var responseObject = JObject.Parse(responseBody);
                         return (responseObject.SelectToken("status").ToObject<string>(), responseObject);
                     }
